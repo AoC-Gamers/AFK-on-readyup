@@ -2,11 +2,11 @@
 {
 	"Footer"
 	{
-        "es"        "Tiempo para ReadyUp: %ds"
+        "es"        "Anti-AFK: %d seg"
 	}
 	"ShowTimer"
 	{
-        "es"        "Tienes {red}%d{default}s para marcar listo"
+        "es"        "Tienes {red}%d{default}s para marcar Ready (Preciona {green}F1{default} o escribe {green}!ready{default})"
 	}
     "MoveToSpec"
     {
