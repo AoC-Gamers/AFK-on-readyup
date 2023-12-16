@@ -329,9 +329,9 @@ stock void L4D_ChangeClientTeam(int client, L4DTeam team)
  *
  * @param client The client index to check.
  */
-stock bool IsValidClientIndex(int client)
+stock bool IsValidClientIndex(int iClient)
 {
-	if (client < 1 || client > MaxClients)
+	if (!iClient || iClient < 1 || iClient > MaxClients)
 		return false;
 
 	return true;
