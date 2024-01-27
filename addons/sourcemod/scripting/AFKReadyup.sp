@@ -52,7 +52,7 @@ public Plugin myinfo =
 	author		= "lechuga",
 	description = "Manage AFK players in the readyup",
 	version		= "1.0",
-	url			= ""
+	url			= "https://github.com/lechuga16/AFK-on-readyup"
 };
 
 /*****************************************************************
