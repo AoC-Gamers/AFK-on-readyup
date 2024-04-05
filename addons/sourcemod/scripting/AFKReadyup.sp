@@ -118,10 +118,17 @@ public void OnPluginEnd()
 	PrintDebug("Plugin End, timer null (%s)", (g_hStartTimerAFK != null) ? "true" : "false");
 
 	if (g_hStartTimerAFK != null)
-	{
 		delete g_hStartTimerAFK;
-		g_hStartTimerAFK = null;
-	}
+}
+
+public void OnMapEnd()
+{
+	/*
+	 * Sometimes the event 'round_start' is called before OnMapStart()
+	 * and the timer handle is not reset, so it's better to do it here.
+	 */
+	if (g_hStartTimerAFK != null)
+		delete g_hStartTimerAFK;
 }
 
 /*****************************************************************
@@ -142,12 +149,9 @@ public OnReadyUpInitiate()
 	}
 
 	if (g_hStartTimerAFK != null)
-	{
 		delete g_hStartTimerAFK;
-		g_hStartTimerAFK = null;
-	}
 
-	g_hStartTimerAFK = CreateTimer(1.0, Timer_CheckAFK, _, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+	g_hStartTimerAFK = CreateTimer(1.0, Timer_CheckAFK, _, TIMER_REPEAT);
 }
 
 public OnRoundIsLive()
@@ -158,10 +162,7 @@ public OnRoundIsLive()
 	PrintDebug("Round is Live, timer null (%s)", (g_hStartTimerAFK != null) ? "true" : "false");
 
 	if (g_hStartTimerAFK != null)
-	{
 		delete g_hStartTimerAFK;
-		g_hStartTimerAFK = null;
-	}
 
 	for (int iClient = 1; iClient <= MaxClients; iClient++)
 	{
