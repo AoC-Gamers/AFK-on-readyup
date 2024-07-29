@@ -31,6 +31,7 @@ Handle
 	g_hStartTimerAFK;
 
 bool
+	g_bLateLoad,
 	g_bReadyUpAvailable;
 
 enum L4DTeam
@@ -50,13 +51,19 @@ public Plugin myinfo =
 	name		= "AFK on Readyup",
 	author		= "lechuga",
 	description = "Manage AFK players in the readyup",
-	version		= "1.1",
+	version		= "1.1.1",
 	url			= "https://github.com/lechuga16/AFK-on-readyup"
 };
 
 /*****************************************************************
 			F O R W A R D   P U B L I C S
 *****************************************************************/
+
+public APLRes AskPluginLoad2(Handle hMyself, bool bLate, char[] sError, int iErr_max)
+{
+	g_bLateLoad = bLate;
+	return APLRes_Success;
+}
 
 public void OnAllPluginsLoaded()
 {
@@ -96,6 +103,11 @@ public void OnPluginStart()
 	HookEvent("player_use", Event_PlayerAction_UserID);
 	HookEvent("player_jump", Event_PlayerAction_UserID);
 	HookEvent("player_team", Event_PlayerTeam);
+
+	if(!g_bLateLoad)
+		return;
+
+	g_bReadyUpAvailable = LibraryExists("readyup");
 }
 
 Action Command_Say(int iClient, int iArgs)
