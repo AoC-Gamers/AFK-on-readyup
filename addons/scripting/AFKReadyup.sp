@@ -1,8 +1,7 @@
-#pragma semicolon 1
-
 #include <sourcemod>
 #include <sdktools>
 #include <colors>
+#include <autoexecconfig>
 
 #undef REQUIRE_PLUGIN
 #include <readyup>
@@ -18,21 +17,28 @@ ConVar
 	g_cvarPlayerIgnore,
 	g_cvarTime,
 	g_cvarReadyFooter,
-	g_cvarShowTimer;
+	g_cvarShowTimer,
+	g_cvarKickDelay;
 
 int
-	g_iPlayerAFK[MAXPLAYERS + 1];
+	g_iPlayerAFK[MAXPLAYERS + 1],
+	iPrevButtons[MAXPLAYERS + 1],
+	iPrevMouse[MAXPLAYERS + 1][2],
+	iLastActivity[MAXPLAYERS + 1],
+	iLastMessageTime[MAXPLAYERS + 1];
 
 float
 	g_fPlayerLastPos[MAXPLAYERS + 1][3],
 	g_fPlayerLastEyes[MAXPLAYERS + 1][3];
 
 Handle
-	g_hStartTimerAFK;
+	g_hStartTimerAFK,
+	g_hKickTimer[MAXPLAYERS + 1];
 
 bool
 	g_bLateLoad,
-	g_bReadyUpAvailable;
+	g_bReadyUpAvailable,
+	bGamePaused = false;
 
 enum L4DTeam
 {
@@ -49,9 +55,9 @@ enum L4DTeam
 public Plugin myinfo =
 {
 	name		= "AFK on Readyup",
-	author		= "lechuga",
+	author		= "lechuga, heize",
 	description = "Manage AFK players in the readyup",
-	version		= "1.1.1",
+	version		= "1.1.3",
 	url			= "https://github.com/lechuga16/AFK-on-readyup"
 };
 
@@ -88,14 +94,16 @@ public void OnPluginStart()
 	g_cvarDebug		   = CreateConVar("sm_afk_debug", "0", "Debug messages", FCVAR_NONE, true, 0.0, true, 1.0);
 	g_cvarEnable	   = CreateConVar("sm_afk_enable", "1", "Activate the plugin", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvarPlayerIgnore = CreateConVar("sm_afk_ignore", "1", "Ignore players ready", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	g_cvarTime		   = CreateConVar("sm_afk_time", "40", "Time to move players", FCVAR_NOTIFY, true, 0.0);
+	g_cvarTime		   = CreateConVar("sm_afk_time", "120", "Time to move players during readyup", FCVAR_NOTIFY, true, 0.0);
 	g_cvarReadyFooter  = CreateConVar("sm_afk_footer", "1", "Show ready footer", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	g_cvarShowTimer	   = CreateConVar("sm_afk_show", "10", "Show timer to players, 0 is disable", FCVAR_NOTIFY, true, 0.0);
+	g_cvarKickDelay    = CreateConVar("sm_afk_kick_delay", "30", "Delay before kicking after moving to spectator", FCVAR_NOTIFY, true, 0.0);
 
-	AutoExecConfig(false, "AFKReadyup");
+	AutoExecConfig(true, "AFKReadyup");
 
 	RegConsoleCmd("say", Command_Say);
 	RegConsoleCmd("say_team", Command_Say);
+	RegConsoleCmd("sm_afks", Cmd_AFKs);
 
 	HookEvent("entity_shoved", Event_PlayerAction_Attacker);
 	HookEvent("weapon_fire", Event_PlayerAction_UserID);
@@ -103,6 +111,17 @@ public void OnPluginStart()
 	HookEvent("player_use", Event_PlayerAction_UserID);
 	HookEvent("player_jump", Event_PlayerAction_UserID);
 	HookEvent("player_team", Event_PlayerTeam);
+
+	AddCommandListener(OnCommandExecute, "spec_mode");
+	AddCommandListener(OnCommandExecute, "spec_next");
+	AddCommandListener(OnCommandExecute, "spec_prev");
+	AddCommandListener(OnCommandExecute, "say");
+	AddCommandListener(OnCommandExecute, "say_team");
+	AddCommandListener(OnCommandExecute, "callvote");
+	AddCommandListener(OnCommandExecute, "pause");
+	AddCommandListener(OnCommandExecute, "unpause");
+
+	CreateTimer(10.0, KickTimer_Callback, 0, TIMER_REPEAT);
 
 	if(!g_bLateLoad)
 		return;
@@ -266,8 +285,101 @@ Action Timer_CheckAFK(Handle timer)
 
 		L4D_ChangeClientTeam(i, L4DTeam_Spectator);
 		CPrintToChatAll("%t %t", "Tag", "MoveToSpec", i);
+		StartKickTimer(i); // Start the kick timer after moving to spectator
 	}
 	return Plugin_Continue;
+}
+
+Action KickTimer_Callback(Handle timer, Handle hndl) {
+	if (bGamePaused) {
+		return Plugin_Continue;
+	}
+	return Plugin_Continue;
+}
+
+/**
+ * Starts a timer to kick a player after moving to spectator.
+ *
+ * @param iClient The client index.
+ */
+void StartKickTimer(int iClient) {
+	if (g_hKickTimer[iClient] != null)
+		delete g_hKickTimer[iClient];
+
+	g_hKickTimer[iClient] = CreateTimer(g_cvarKickDelay.FloatValue, Timer_KickPlayer, GetClientUserId(iClient));
+}
+
+/**
+ * Timer callback to kick a player.
+ *
+ * @param timer The timer handle.
+ */
+Action Timer_KickPlayer(Handle timer, int iClient) {
+    iClient = GetClientOfUserId(iClient);
+    if (IsClientInGame(iClient) && !IsFakeClient(iClient)) {
+        char sName[MAX_NAME_LENGTH];
+        GetClientName(iClient, sName, sizeof(sName));
+        CPrintToChatAll("%t %T", "Tag", "KickMessage", LANG_SERVER, sName);
+        KickClient(iClient, "You were kicked for being AFK for too long.");
+    }
+    return Plugin_Continue;
+}
+
+Action OnCommandExecute(int client, const char[] command, int argc) {
+	if (client > 0 && IsClientInGame(client) && !IsFakeClient(client)) {
+		iLastActivity[client] = GetTime();
+		ResetTimers(client); // Reset the AFK timer on any command execution
+	}
+
+	// Handle pause/unpause state tracking
+	if (StrEqual(command, "pause", false)) {
+		bGamePaused = true;
+	}
+	else if (StrEqual(command, "unpause", false)) {
+		bGamePaused = false;
+	}
+
+	return Plugin_Continue;
+}
+
+public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float vel[3], const float angles[3], int weapon, int subtype, int cmdnum, int tickcount, int seed, const int mouse[2]) {
+	if (bGamePaused) return;
+
+	if (client > 0 && client <= MaxClients && (iPrevButtons[client] != buttons || iPrevMouse[client][0] != mouse[0] || iPrevMouse[client][1] != mouse[1]) && IsClientInGame(client) && !IsFakeClient(client)) {
+		iPrevButtons[client] = buttons;
+		iPrevMouse[client][0] = mouse[0];
+		iPrevMouse[client][1] = mouse[1];
+		iLastActivity[client] = GetTime();
+		ResetTimers(client); // Reset the AFK timer on any player movement
+	}
+}
+
+public void OnClientConnected(int client) {
+	iLastActivity[client] = 0;
+	iLastMessageTime[client] = 0; // Initialize the last message time
+}
+
+public void OnClientDisconnect_Post(int client) {
+	iLastActivity[client] = 0;
+	iLastMessageTime[client] = 0; // Reset the last message time
+}
+
+public void OnClientPutInServer(int client) {
+	if (client > 0 && IsClientInGame(client) && !IsFakeClient(client)) {
+		iLastActivity[client] = GetTime();
+		iLastMessageTime[client] = GetTime();
+		ResetTimers(client);
+	}
+}
+
+public Action Cmd_AFKs(client, args) {
+	int iTime = GetTime();
+	for (int i = 1; i <= MaxClients; i++) {
+		if (IsClientInGame(i) && !IsFakeClient(i)) {
+			ReplyToCommand(client, "%N : last activity %d seconds ago", i, iTime - iLastActivity[i]);
+		}
+	}
+	return Plugin_Handled;
 }
 
 /**
@@ -322,6 +434,15 @@ void ResetTimers(int iClient, bool bCheckTeam = true)
 	g_iPlayerAFK[iClient] = g_cvarTime.IntValue;
 	GetClientAbsOrigin(iClient, g_fPlayerLastPos[iClient]);
 	GetClientEyeAngles(iClient, g_fPlayerLastEyes[iClient]);
+	iLastActivity[iClient] = GetTime();
+
+	// Cancel kick timer if player became active after being moved to spectator
+	if (g_hKickTimer[iClient] != null)
+	{
+		delete g_hKickTimer[iClient];
+		g_hKickTimer[iClient] = null;
+		PrintDebug("Cancelled kick timer for client %d due to activity", iClient);
+	}
 }
 
 /**
@@ -394,6 +515,7 @@ void PrintDebug(const char[] sMessage, any...)
 
 	PrintToServer("[AFK] %s", sFormat);
 }
+
 
 // =======================================================================================
 // Bibliography
