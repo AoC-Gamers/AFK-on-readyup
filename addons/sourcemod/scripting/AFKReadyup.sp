@@ -264,7 +264,7 @@ Action Timer_CheckAFK(Handle timer)
 		if (g_cvarPlayerIgnore.BoolValue && IsReady(i))
 			continue;
 
-		if (g_cvarShowTimer.IntValue > 0 && g_iPlayerAFK[i] <= g_cvarShowTimer.IntValue)
+		if (g_cvarShowTimer.BoolValue && g_iPlayerAFK[i] <= g_cvarShowTimer.IntValue)
 			CPrintToChat(i, "%t %t", "Tag", "ShowTimer", g_iPlayerAFK[i]);
 
 		if (PlayerPositionChanged(i))
